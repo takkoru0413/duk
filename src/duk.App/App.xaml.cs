@@ -1,13 +1,14 @@
-﻿using System.Configuration;
-using System.Data;
+using System.Text;
 using System.Windows;
 
 namespace duk.App;
 
-/// <summary>
-/// Interaction logic for App.xaml
-/// </summary>
 public partial class App : Application
 {
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        // Shift-JIS (CP932) などのエンコーディングを有効化
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        base.OnStartup(e);
+    }
 }
-
