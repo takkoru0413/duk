@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/duk.App/duk.App.csproj" />
+    <Project Path="src/duk.Core/duk.Core.csproj" />
+    <Project Path="src/duk.Signaling/duk.Signaling.csproj" />
+  </Folder>
+</Solution>
