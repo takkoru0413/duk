@@ -9,8 +9,8 @@ public enum SessionRole { None, Host, Member }
 public class SessionManager : IDisposable
 {
     // Cloudflare Workers のURL（後でデプロイしたURLに変える）
-    public const string SignalingUrl = "wss://duk-signaling.workers.dev";
-    public const string InviteBaseUrl = "https://duk.pages.dev/join";
+    public const string SignalingUrl  = "wss://duk-signaling.dukapp.workers.dev";
+    public const string InviteBaseUrl = "https://duk-signaling.dukapp.workers.dev/join";
 
     private ClientWebSocket? _ws;
     private CancellationTokenSource _cts = new();
