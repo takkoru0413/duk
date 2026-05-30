@@ -5,6 +5,10 @@
     <ProjectReference Include="..\duk.Signaling\duk.Signaling.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
