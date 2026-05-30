@@ -38,6 +38,31 @@ public class ExtensionContext(MainWindow window) : IExtensionContext
 
     public void RegisterCommand(string label, Action handler) =>
         window.RegisterExtensionCommand(label, handler);
+
+    public async Task<IEnumerable<duk.Core.Lsp.CompletionItem>?> GetCompletionsAsync(int line, int col)
+    {
+        var path = window.CurrentFilePath;
+        if (path == null || window.Lsp == null) return null;
+        var list = await window.Lsp.GetCompletionsAsync(path, line, col);
+        return list?.Items;
+    }
+
+    public async Task<duk.Core.Lsp.Hover?> GetHoverAsync(int line, int col)
+    {
+        var path = window.CurrentFilePath;
+        if (path == null || window.Lsp == null) return null;
+        return await window.Lsp.GetHoverAsync(path, line, col);
+    }
+
+    public async Task<duk.Core.Lsp.Location[]?> GetDefinitionAsync(int line, int col)
+    {
+        var path = window.CurrentFilePath;
+        if (path == null || window.Lsp == null) return null;
+        return await window.Lsp.GoToDefinitionAsync(path, line, col);
+    }
+
+    public IEnumerable<duk.Core.Lsp.Diagnostic> GetCurrentDiagnostics() =>
+        window.GetDiagnosticsForFile(window.CurrentFilePath ?? "");
 }
 
 public class ExtensionLoader

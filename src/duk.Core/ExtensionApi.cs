@@ -42,4 +42,10 @@ public interface IExtensionContext
     // ファイル操作
     void OpenFile(string path);
     void SaveCurrentFile();
+
+    // LSP（言語インテリジェンス）
+    Task<IEnumerable<Lsp.CompletionItem>?> GetCompletionsAsync(int line, int col);
+    Task<Lsp.Hover?>                       GetHoverAsync(int line, int col);
+    Task<Lsp.Location[]?>                  GetDefinitionAsync(int line, int col);
+    IEnumerable<Lsp.Diagnostic>            GetCurrentDiagnostics();
 }

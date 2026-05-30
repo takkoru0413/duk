@@ -32,6 +32,10 @@ public partial class MainWindow : Window
     internal AppSettings Settings = AppSettings.Load();
     private FoldingManager? _foldingManager;
     private ExtensionLoader? _extLoader;
+    internal LspManager? Lsp;
+    private CompletionPopup? _completionPopup;
+    private readonly Dictionary<string, List<duk.Core.Lsp.Diagnostic>> _diagnostics = [];
+    private System.Windows.Threading.DispatcherTimer? _changeTimer;
 
     // 外部公開プロパティ（拡張機能API用）
     public string? CurrentFilePath   => _activeTab >= 0 ? _tabs[_activeTab].Path  : null;
@@ -46,9 +50,213 @@ public partial class MainWindow : Window
         Editor.TextChanged += Editor_TextChanged;
         ApplySettings();
         BuildCommandList();
+        InitLsp();
+        InitCompletionPopup();
         OpenNewTab("Untitled", "", "", "Plain Text");
         LoadExtensions();
+        Closed += (_, _) => { Lsp?.Dispose(); _extLoader?.UnloadAll(); };
     }
+
+    private void InitLsp()
+    {
+        Lsp = new LspManager(this);
+        Lsp.DiagnosticsUpdated += (_, e) => Dispatcher.Invoke(() => UpdateDiagnostics(e.FilePath, e.Diagnostics));
+
+        // テキスト変更後300msでLSPに通知（タイプ中は待つ）
+        _changeTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(300)
+        };
+        _changeTimer.Tick += async (_, _) =>
+        {
+            _changeTimer.Stop();
+            var path = CurrentFilePath;
+            if (path != null && path != "")
+                await Lsp.NotifyChangedAsync(path, Editor.Text);
+        };
+    }
+
+    private void InitCompletionPopup()
+    {
+        _completionPopup = new CompletionPopup { PlacementTarget = Editor };
+        _completionPopup.ItemAccepted += OnCompletionAccepted;
+
+        // 文字入力でLSPにchangeを通知＋補完トリガー
+        Editor.TextArea.TextEntered += async (_, e) =>
+        {
+            _changeTimer?.Stop();
+            _changeTimer?.Start();
+
+            // . や ( 等のトリガー文字で補完を表示
+            if (e.Text is "." or "(" or "<" or " ")
+                await ShowCompletionsAsync();
+        };
+
+        // Ctrl+Space で手動補完
+        Editor.TextArea.KeyDown += async (_, e) =>
+        {
+            if (e.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                await ShowCompletionsAsync();
+                e.Handled = true;
+            }
+            else if (_completionPopup.IsVisible)
+            {
+                if (e.Key == Key.Down)  { _completionPopup.SelectNext(); e.Handled = true; }
+                if (e.Key == Key.Up)    { _completionPopup.SelectPrev(); e.Handled = true; }
+                if (e.Key == Key.Enter || e.Key == Key.Tab)
+                    { _completionPopup.AcceptSelected(); e.Handled = true; }
+                if (e.Key == Key.Escape){ _completionPopup.Hide(); e.Handled = true; }
+            }
+        };
+
+        // Hover（マウスオーバーで型情報表示）
+        Editor.MouseHover += async (_, e) =>
+        {
+            var pos = e.GetPosition(Editor.TextArea);
+            var hit = Editor.TextArea.TextView.GetVisualPosition(
+                Editor.TextArea.Caret.Position,
+                ICSharpCode.AvalonEdit.Rendering.VisualYPosition.LineTop);
+            var caret = Editor.TextArea.Caret;
+            await ShowHoverAsync(caret.Line - 1, caret.Column - 1);
+        };
+    }
+
+    private async Task ShowCompletionsAsync()
+    {
+        var path = CurrentFilePath;
+        if (path == null || path == "" || Lsp == null) return;
+        if (!Lsp.HasServer(path)) return;
+
+        var caret = Editor.TextArea.Caret;
+        var list  = await Lsp.GetCompletionsAsync(path, caret.Line - 1, caret.Column - 1);
+        if (list == null || list.Items.Length == 0) return;
+
+        // カーソル位置をスクリーン座標に変換
+        var rect = Editor.TextArea.Caret.CalculateCaretRectangle();
+        var pt   = Editor.PointToScreen(new Point(rect.Left, rect.Bottom));
+
+        _completionPopup?.Show(list.Items, pt.X, pt.Y);
+    }
+
+    private void OnCompletionAccepted(object? sender, duk.Core.Lsp.CompletionItem item)
+    {
+        var text = item.InsertText ?? item.Label;
+        // 現在の単語を置換
+        var offset = Editor.TextArea.Caret.Offset;
+        var doc    = Editor.Document;
+        var line   = doc.GetLineByOffset(offset);
+        var lineText = doc.GetText(line.Offset, offset - line.Offset);
+        var wordStart = lineText.LastIndexOfAny([' ', '.', '(', '<', '\t']) + 1;
+        var replaceStart = line.Offset + wordStart;
+        var replaceLen   = offset - replaceStart;
+        doc.Replace(replaceStart, replaceLen, text);
+        Editor.Focus();
+    }
+
+    private async Task ShowHoverAsync(int line, int col)
+    {
+        var path = CurrentFilePath;
+        if (path == null || path == "" || Lsp == null) return;
+        var hover = await Lsp.GetHoverAsync(path, line, col);
+        if (hover == null) return;
+        var text = hover.GetText();
+        if (!string.IsNullOrEmpty(text))
+            ShowLspInfo(text);
+    }
+
+    // ========== 診断（エラー・警告）==========
+
+    private void UpdateDiagnostics(string filePath, duk.Core.Lsp.Diagnostic[] diags)
+    {
+        _diagnostics[filePath] = [.. diags];
+        UpdateStatusErrors();
+        UpdateProblemsPanel();
+    }
+
+    private void UpdateStatusErrors()
+    {
+        var allDiags = _diagnostics.Values.SelectMany(d => d).ToList();
+        var errors   = allDiags.Count(d => d.IsError);
+        var warnings = allDiags.Count(d => d.IsWarning);
+        // ステータスバーのエラー数更新
+        Dispatcher.Invoke(() =>
+        {
+            // StatusBar の ✕ と ⚠ を更新（XAMLのTextBlockをコードから更新）
+        });
+    }
+
+    private void UpdateProblemsPanel()
+    {
+        if (ProblemsPanel == null) return;
+        ProblemsPanel.Child = BuildProblemsView();
+    }
+
+    private UIElement BuildProblemsView()
+    {
+        var all = _diagnostics
+            .SelectMany(kv => kv.Value.Select(d => (kv.Key, d)))
+            .OrderByDescending(x => x.d.IsError)
+            .ToList();
+
+        if (all.Count == 0)
+            return new TextBlock
+            {
+                Text = "問題は検出されていません",
+                Foreground = new SolidColorBrush(Color.FromRgb(0x6e, 0x6e, 0x6e)),
+                FontSize = 13, FontFamily = new FontFamily("Segoe UI"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment   = VerticalAlignment.Center
+            };
+
+        var panel = new StackPanel { Margin = new Thickness(4) };
+        foreach (var (filePath, d) in all)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
+            row.Children.Add(new TextBlock
+            {
+                Text      = d.IsError ? "✕" : "⚠",
+                Foreground = d.IsError
+                    ? new SolidColorBrush(Color.FromRgb(0xf1, 0x4c, 0x4c))
+                    : new SolidColorBrush(Color.FromRgb(0xe5, 0xc0, 0x7b)),
+                FontSize  = 13, Width = 20
+            });
+            row.Children.Add(new TextBlock
+            {
+                Text      = $"{d.Message}  ({Path.GetFileName(filePath)}:{d.Range.Start.Line + 1})",
+                Foreground = new SolidColorBrush(Color.FromRgb(0xcc, 0xcc, 0xcc)),
+                FontSize   = 12, FontFamily = new FontFamily("Segoe UI"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Cursor = Cursors.Hand
+            });
+            // クリックで該当行に移動
+            var captured = (filePath, d);
+            row.MouseLeftButtonDown += (_, _) =>
+            {
+                if (captured.filePath == CurrentFilePath)
+                {
+                    Editor.TextArea.Caret.Line   = captured.d.Range.Start.Line + 1;
+                    Editor.TextArea.Caret.Column = captured.d.Range.Start.Character + 1;
+                    Editor.ScrollToLine(captured.d.Range.Start.Line + 1);
+                    Editor.Focus();
+                }
+                else OpenFileByPath(captured.filePath);
+            };
+            panel.Children.Add(row);
+        }
+        return panel;
+    }
+
+    // ========== LSP通知ヘルパー ==========
+
+    public IEnumerable<duk.Core.Lsp.Diagnostic> GetDiagnosticsForFile(string path) =>
+        _diagnostics.GetValueOrDefault(path) ?? [];
+
+    public void ShowLspWarning(string msg) =>
+        Dispatcher.Invoke(() => StatusSession.Text = $"⚠ {msg.Split('\n')[0]}");
+
+    public void ShowLspInfo(string msg) =>
+        Dispatcher.Invoke(() => StatusSession.Text = msg.Length > 60 ? msg[..60] + "..." : msg);
 
     private void LoadExtensions()
     {
@@ -182,6 +390,11 @@ public partial class MainWindow : Window
         StatusLang.Text = t.Language;
         Title = $"duk - {t.Title}";
         Editor.TextArea.Caret.Offset = 0;
+        _completionPopup?.Hide();
+
+        // LSPにドキュメントオープンを通知
+        if (t.Path != "" && Lsp != null)
+            _ = Lsp.NotifyOpenedAsync(t.Path, t.Content);
     }
 
     private void CloseTab(int index)
