@@ -1,0 +1,6 @@
+name = "duk-signaling"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+# 環境変数（必要に応じて追加）

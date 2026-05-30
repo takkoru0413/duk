@@ -1,0 +1,179 @@
+<Window x:Class="duk.App.SessionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="セッション - duk" Height="420" Width="480"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Background="#0d0d0d">
+
+    <Window.Resources>
+        <Style x:Key="Btn" TargetType="Button">
+            <Setter Property="Background" Value="#0078d4"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bg" Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="#106ebe"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bg" Property="Background" Value="#333"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BtnGhost" TargetType="Button" BasedOn="{StaticResource Btn}">
+            <Setter Property="Background" Value="#1e1e1e"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bg" Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}"
+                                BorderBrush="#3c3c3c" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="#2a2a2a"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="Input" TargetType="TextBox">
+            <Setter Property="Background" Value="#1e1e1e"/>
+            <Setter Property="Foreground" Value="#cccccc"/>
+            <Setter Property="CaretBrush" Value="#cccccc"/>
+            <Setter Property="BorderBrush" Value="#3c3c3c"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="8,6"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="16"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="24"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- タイトル -->
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="グループセッション" Foreground="White"
+                       FontSize="20" FontWeight="SemiBold" FontFamily="Segoe UI"/>
+            <TextBlock Text="リンクを共有するだけでリアルタイム共同編集" Foreground="#6e6e6e"
+                       FontSize="12" FontFamily="Segoe UI" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <!-- ユーザー名 -->
+        <StackPanel Grid.Row="2">
+            <TextBlock Text="ユーザー名" Foreground="#bbbbbb"
+                       FontSize="12" FontFamily="Segoe UI" Margin="0,0,0,6"/>
+            <TextBox x:Name="UserNameBox" Style="{StaticResource Input}"
+                     Text="User" MaxLength="32"/>
+        </StackPanel>
+
+        <!-- メインコンテンツ（タブ切替） -->
+        <Grid Grid.Row="4" x:Name="MainContent">
+            <!-- 初期状態 -->
+            <StackPanel x:Name="InitPanel" VerticalAlignment="Center">
+                <Button Style="{StaticResource Btn}" Content="セッションを作成する"
+                        Click="CreateSession_Click" Height="44" FontSize="14"/>
+                <TextBlock Text="または" Foreground="#555" FontFamily="Segoe UI"
+                           FontSize="12" HorizontalAlignment="Center" Margin="0,16"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="RoomCodeBox" Style="{StaticResource Input}"
+                             Grid.Column="0" FontFamily="Consolas" FontSize="14"
+                             Text="" MaxLength="11"
+                             KeyDown="RoomCodeBox_KeyDown"/>
+                    <Button Grid.Column="2" Style="{StaticResource BtnGhost}"
+                            Content="参加" Click="JoinSession_Click" Height="36" Width="64"/>
+                </Grid>
+                <TextBlock Text="ルームコード（例: ABC-123-XYZ）を入力" Foreground="#555"
+                           FontSize="11" FontFamily="Segoe UI" Margin="0,6,0,0"/>
+            </StackPanel>
+
+            <!-- 接続中 -->
+            <StackPanel x:Name="ConnectingPanel" Visibility="Collapsed"
+                        VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock x:Name="ConnectingText" Text="接続中..." Foreground="#6e6e6e"
+                           FontSize="14" FontFamily="Segoe UI" HorizontalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- ホスト: セッション中 -->
+            <StackPanel x:Name="HostPanel" Visibility="Collapsed">
+                <Border Background="#111" CornerRadius="6" Padding="16" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="招待リンク" Foreground="#6e6e6e"
+                                   FontSize="11" FontFamily="Segoe UI" Margin="0,0,0,8"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="InviteLinkBox" Grid.Column="0"
+                                     Style="{StaticResource Input}"
+                                     IsReadOnly="True" FontFamily="Consolas" FontSize="11"/>
+                            <Button Grid.Column="2" Style="{StaticResource BtnGhost}"
+                                    Content="コピー" Click="CopyLink_Click" Height="34" Width="60"/>
+                        </Grid>
+                        <TextBlock x:Name="RoomCodeDisplay" Foreground="#4ec9b0"
+                                   FontFamily="Consolas" FontSize="18" FontWeight="Bold"
+                                   HorizontalAlignment="Center" Margin="0,12,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="参加メンバー" Foreground="#6e6e6e"
+                           FontSize="11" FontFamily="Segoe UI" Margin="0,0,0,8"/>
+                <StackPanel x:Name="MembersList"/>
+            </StackPanel>
+
+            <!-- メンバー: 参加中 -->
+            <StackPanel x:Name="MemberPanel" Visibility="Collapsed"
+                        VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock Text="✓" Foreground="#4ec9b0" FontSize="32"
+                           HorizontalAlignment="Center" Margin="0,0,0,12"/>
+                <TextBlock x:Name="JoinedRoomText" Text="ルームに参加しました"
+                           Foreground="White" FontSize="16" FontFamily="Segoe UI"
+                           HorizontalAlignment="Center"/>
+                <TextBlock x:Name="JoinedRoomCode" Foreground="#6e6e6e"
+                           FontSize="12" FontFamily="Segoe UI"
+                           HorizontalAlignment="Center" Margin="0,8,0,0"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- フッター -->
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="LeaveBtn" Style="{StaticResource BtnGhost}"
+                    Content="セッションを終了" Visibility="Collapsed"
+                    Click="Leave_Click" Margin="0,0,8,0"/>
+            <Button Style="{StaticResource BtnGhost}"
+                    Content="閉じる" Click="Close_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -33,6 +33,7 @@ public partial class MainWindow : Window
     private FoldingManager? _foldingManager;
     private ExtensionLoader? _extLoader;
     internal LspManager? Lsp;
+    internal readonly SessionManager Session = new();
     private CompletionPopup? _completionPopup;
     private readonly Dictionary<string, List<duk.Core.Lsp.Diagnostic>> _diagnostics = [];
     private System.Windows.Threading.DispatcherTimer? _changeTimer;
@@ -54,7 +55,18 @@ public partial class MainWindow : Window
         InitCompletionPopup();
         OpenNewTab("Untitled", "", "", "Plain Text");
         LoadExtensions();
-        Closed += (_, _) => { Lsp?.Dispose(); _extLoader?.UnloadAll(); };
+        Closed += (_, _) => { Lsp?.Dispose(); _extLoader?.UnloadAll(); Session.Dispose(); };
+
+        // エディター変更をセッションに送信
+        Editor.TextChanged += async (_, _) =>
+        {
+            if (Session.IsActive && Session.Role == SessionRole.Host)
+                await Session.SendTextChangeAsync(Editor.Text, 0);
+        };
+
+        // 起動時にリンクから来た場合は自動でセッションダイアログを開く
+        if (App.StartupJoinCode != null)
+            Loaded += (_, _) => OpenSessionDialog(App.StartupJoinCode);
     }
 
     private void InitLsp()
@@ -1359,9 +1371,13 @@ public partial class MainWindow : Window
 
     // ========== セッション ==========
 
-    private void CreateSession_Click(object sender, RoutedEventArgs e)
+    private void CreateSession_Click(object sender, RoutedEventArgs e) =>
+        OpenSessionDialog(null);
+
+    private void OpenSessionDialog(string? joinCode)
     {
-        StatusSession.Text = "● 接続中...";
+        var dlg = new SessionDialog(this, Session, joinCode) { Owner = this };
+        dlg.Show();
     }
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
